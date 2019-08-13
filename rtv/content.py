@@ -8,6 +8,7 @@ from datetime import datetime
 from timeit import default_timer as timer
 
 import six
+from bs4 import BeautifulSoup
 from kitchen.text.display import wrap
 
 from . import exceptions
@@ -148,6 +149,7 @@ class Content(object):
             data['type'] = 'Comment'
             data['level'] = comment.nested_level
             data['body'] = comment.body
+            data['html'] = comment.body_html
             data['created'] = cls.humanize_timestamp(comment.created_utc)
             data['score'] = '{0} pts'.format(
                 '-' if comment.score_hidden else comment.score)
@@ -155,11 +157,16 @@ class Content(object):
             data['is_author'] = (name == sub_name)
             data['flair'] = flair
             data['likes'] = comment.likes
-            data['gold'] = comment.gilded > 0
+            data['gold'] = comment.gilded
             data['permalink'] = permalink
             data['stickied'] = stickied
             data['hidden'] = False
             data['saved'] = comment.saved
+            if comment.edited:
+                data['edited'] = '(edit {})'.format(
+                    cls.humanize_timestamp(comment.edited))
+            else:
+                data['edited'] = ''
         else:
             # Saved comments don't have a nested level and are missing a couple
             # of fields like ``submission``. As a result, we can only load a
@@ -185,10 +192,15 @@ class Content(object):
             data['created'] = cls.humanize_timestamp(comment.created_utc)
             data['saved'] = comment.saved
             data['stickied'] = stickied
-            data['gold'] = comment.gilded > 0
+            data['gold'] = comment.gilded
             data['author'] = author
             data['flair'] = flair
             data['hidden'] = False
+            if comment.edited:
+                data['edited'] = '(edit {})'.format(
+                    cls.humanize_timestamp(comment.edited))
+            else:
+                data['edited'] = ''
 
         return data
 
@@ -217,6 +229,7 @@ class Content(object):
         data['type'] = 'Submission'
         data['title'] = sub.title
         data['text'] = sub.selftext
+        data['html'] = sub.selftext_html or ''
         data['created'] = cls.humanize_timestamp(sub.created_utc)
         data['created_long'] = cls.humanize_timestamp(sub.created_utc, True)
         data['comments'] = '{0} comments'.format(sub.num_comments)
@@ -227,13 +240,21 @@ class Content(object):
         data['flair'] = '[{0}]'.format(flair.strip(' []')) if flair else ''
         data['url_full'] = sub.url
         data['likes'] = sub.likes
-        data['gold'] = sub.gilded > 0
+        data['gold'] = sub.gilded
         data['nsfw'] = sub.over_18
         data['stickied'] = sub.stickied
         data['hidden'] = sub.hidden
         data['xpost_subreddit'] = None
         data['index'] = None  # This is filled in later by the method caller
         data['saved'] = sub.saved
+        if sub.edited:
+            data['edited'] = '(edit {})'.format(
+                cls.humanize_timestamp(sub.edited))
+            data['edited_long'] = '(edit {})'.format(
+                cls.humanize_timestamp(sub.edited, True))
+        else:
+            data['edited'] = ''
+            data['edited_long'] = ''
 
         if sub.url.split('/r/')[-1] == sub.permalink.split('/r/')[-1]:
             data['url'] = 'self.{0}'.format(data['subreddit'])
@@ -274,6 +295,52 @@ class Content(object):
 
         return data
 
+    @classmethod
+    def strip_praw_message(cls, msg):
+        """
+        Parse through a message and return a dict with data ready to be
+        displayed through the terminal. Messages can be of either type
+        praw.objects.Message or praw.object.Comment. The comments returned will
+        contain special fields unique to messages and can't be parsed as normal
+        comment objects.
+        """
+        author = getattr(msg, 'author', None)
+
+        data = {}
+        data['object'] = msg
+
+        if isinstance(msg, praw.objects.Message):
+            data['type'] = 'Message'
+            data['level'] = msg.nested_level
+            data['distinguished'] = msg.distinguished
+            data['permalink'] = None
+            data['submission_permalink'] = None
+            data['subreddit_name'] = None
+            data['link_title'] = None
+            data['context'] = None
+        else:
+            data['type'] = 'InboxComment'
+            data['level'] = 0
+            data['distinguished'] = None
+            data['permalink'] = msg._fast_permalink
+            data['submission_permalink'] = '/'.join(data['permalink'].split('/')[:-2])
+            data['subreddit_name'] = msg.subreddit_name_prefixed
+            data['link_title'] = msg.link_title
+            data['context'] = msg.context
+
+        data['id'] = msg.id
+        data['subject'] = msg.subject
+        data['body'] = msg.body
+        data['html'] = msg.body_html
+        data['created'] = cls.humanize_timestamp(msg.created_utc)
+        data['created_long'] = cls.humanize_timestamp(msg.created_utc, True)
+        data['recipient'] = msg.dest
+        data['distinguished'] = msg.distinguished
+        data['author'] = author.name if author else '[deleted]'
+        data['is_new'] = msg.new
+        data['was_comment'] = msg.was_comment
+        return data
+
     @staticmethod
     def humanize_timestamp(utc_timestamp, verbose=False):
         """
@@ -285,20 +352,50 @@ class Content(object):
         seconds = int(timedelta.total_seconds())
         if seconds < 60:
             return 'moments ago' if verbose else '0min'
+
         minutes = seconds // 60
         if minutes < 60:
-            return '%d minutes ago' % minutes if verbose else '%dmin' % minutes
+            if verbose and minutes == 1:
+                return '1 minutes ago'
+            elif verbose:
+                return '%d minutes ago' % minutes
+            else:
+                return '%dmin' % minutes
+
         hours = minutes // 60
         if hours < 24:
-            return '%d hours ago' % hours if verbose else '%dhr' % hours
+            if verbose and hours == 1:
+                return '1 hour ago'
+            elif verbose:
+                return '%d hours ago' % hours
+            else:
+                return '%dhr' % hours
+
         days = hours // 24
         if days < 30:
-            return '%d days ago' % days if verbose else '%dday' % days
+            if verbose and days == 1:
+                return '1 day ago'
+            elif verbose:
+                return '%d days ago' % days
+            else:
+                return '%dday' % days
+
         months = days // 30.4
         if months < 12:
-            return '%d months ago' % months if verbose else '%dmonth' % months
+            if verbose and months == 1:
+                return '1 month ago'
+            elif verbose:
+                return '%d months ago' % months
+            else:
+                return '%dmonth' % months
+
         years = months // 12
-        return '%d years ago' % years if verbose else '%dyr' % years
+        if verbose and years == 1:
+            return '1 year ago'
+        elif verbose:
+            return '%d years ago' % years
+        else:
+            return '%dyr' % years
 
     @staticmethod
     def wrap_text(text, width):
@@ -314,6 +411,22 @@ class Content(object):
             lines = wrap(paragraph, width=width) or ['']
             out.extend(lines)
         return out
+
+    @staticmethod
+    def extract_links(html):
+        """
+        Extract a list of hyperlinks from an HTML document.
+        """
+        links = []
+        soup = BeautifulSoup(html, 'html.parser')
+        for link in soup.findAll('a'):
+            href = link.get('href')
+            if not href:
+                continue
+            if href.startswith('/'):
+                href = 'https://www.reddit.com' + href
+            links.append({'text': link.text, 'href': href})
+        return links
 
 
 class SubmissionContent(Content):
@@ -343,10 +456,18 @@ class SubmissionContent(Content):
     def from_url(cls, reddit, url, loader, indent_size=2, max_indent_level=8,
                  order=None, max_comment_cols=120):
 
-        url = url.replace('http:', 'https:')  # Reddit forces SSL
+        # Reddit forces SSL
+        url = url.replace('http:', 'https:')
+
         # Sometimes reddit will return a 403 FORBIDDEN when trying to access an
         # np link while using OAUTH. Cause is unknown.
         url = url.replace('https://np.', 'https://www.')
+
+        # Sometimes reddit will return internal links like "context" as
+        # relative URLs.
+        if url.startswith('/'):
+            url = 'https://www.reddit.com' + url
+
         submission = reddit.get_submission(url, comment_sort=order)
         return cls(submission, loader, indent_size, max_indent_level, order,
                    max_comment_cols)
@@ -510,12 +631,41 @@ class SubredditContent(Content):
         if resource_root == 'user':
             resource_root = 'u'
         elif resource_root.startswith('user/'):
+            # Special check for multi-reddit resource roots
+            # E.g.
+            #     before: resource_root = "user/civilization_phaze_3/m"
+            #     After:  resource_root = "u/civilization_phaze_3/m"
             resource_root = 'u' + resource_root[4:]
 
-        # There should at most two parts left, the resource and the order
+        # The parts left should be in one of the following forms:
+        #    [resource]
+        #    [resource, order]
+        #    [resource, user_room, order]
+
+        user_rooms = ['overview', 'submitted', 'comments']
+        private_user_rooms = ['upvoted', 'downvoted', 'hidden', 'saved']
+        user_room = None
+
         if len(parts) == 1:
+            # E.g. /r/python
+            #    parts = ["python"]
+            #    resource = "python"
+            #    resource_order = None
             resource, resource_order = parts[0], None
+        elif resource_root == 'u' and len(parts) in [2, 3] \
+                and parts[1] in user_rooms + private_user_rooms:
+            # E.g. /u/spez/submitted/top ->
+            #    parts = ["spez", "submitted", "top"]
+            #    resource = "spez"
+            #    user_room = "submitted"
+            #    resource_order = "top"
+            resource, user_room = parts[:2]
+            resource_order = parts[2] if len(parts) == 3 else None
         elif len(parts) == 2:
+            # E.g. /r/python/top
+            #    parts = ["python", "top"]
+            #    resource = "python
+            #    resource_order = "top"
             resource, resource_order = parts
         else:
             raise InvalidSubreddit('`{}` is an invalid format'.format(name))
@@ -531,6 +681,8 @@ class SubredditContent(Content):
 
         display_order = order
         display_name = '/'.join(['', resource_root, resource])
+        if user_room and resource_root == 'u':
+            display_name += '/' + user_room
 
         # Split the order from the period E.g. controversial-all, top-hour
         if order and '-' in order:
@@ -603,22 +755,23 @@ class SubredditContent(Content):
             if not reddit.is_oauth_session():
                 raise exceptions.AccountError('Not logged in')
             else:
+                user_room = user_room or 'overview'
                 order = order or 'new'
-                submissions = reddit.user.get_overview(sort=order, limit=None)
-
-        elif resource_root == 'u' and resource == 'saved':
-            if not reddit.is_oauth_session():
-                raise exceptions.AccountError('Not logged in')
-            else:
-                order = order or 'new'
-                submissions = reddit.user.get_saved(sort=order, limit=None)
+                period = period or 'all'
+                method = getattr(reddit.user, 'get_%s' % user_room)
+                submissions = method(sort=order, time=period, limit=None)
 
         elif resource_root == 'u':
+            user_room = user_room or 'overview'
+            if user_room not in user_rooms:
+                # Tried to access a private room like "u/me/hidden" for a
+                # different redditor
+                raise InvalidSubreddit('Unavailable Resource')
             order = order or 'new'
             period = period or 'all'
             redditor = reddit.get_redditor(resource)
-            submissions = redditor.get_overview(
-                sort=order, time=period, limit=None)
+            method = getattr(redditor, 'get_%s' % user_room)
+            submissions = method(sort=order, time=period, limit=None)
 
         elif resource == 'front':
             if order in (None, 'hot'):
@@ -785,6 +938,92 @@ class SubscriptionContent(Content):
         return data
 
 
+class InboxContent(Content):
+
+    def __init__(self, order, content_generator, loader,
+                 indent_size=2, max_indent_level=8):
+
+        self.name = 'My Inbox'
+        self.order = order
+        self.query = None
+        self.indent_size = indent_size
+        self.max_indent_level = max_indent_level
+        self._loader = loader
+        self._content_generator = content_generator
+        self._content_data = []
+
+        try:
+            self.get(0)
+        except IndexError:
+            if order == 'all':
+                raise exceptions.InboxError('Empty Inbox')
+            else:
+                raise exceptions.InboxError('Empty Inbox [%s]' % order)
+
+    @classmethod
+    def from_user(cls, reddit, loader, order='all'):
+        if order == 'all':
+            items = reddit.get_inbox(limit=None)
+        elif order == 'unread':
+            items = reddit.get_unread(limit=None)
+        elif order == 'messages':
+            items = reddit.get_messages(limit=None)
+        elif order == 'comments':
+            items = reddit.get_comment_replies(limit=None)
+        elif order == 'posts':
+            items = reddit.get_post_replies(limit=None)
+        elif order == 'mentions':
+            items = reddit.get_mentions(limit=None)
+        elif order == 'sent':
+            items = reddit.get_sent(limit=None)
+        else:
+            raise exceptions.InboxError('Invalid order %s' % order)
+
+        return cls(order, items, loader)
+
+    @property
+    def range(self):
+        return 0, len(self._content_data) - 1
+
+    def get(self, index, n_cols=70):
+        """
+        Grab the `i`th object, with the title field formatted to fit
+        inside of a window of width `n_cols`
+        """
+
+        if index < 0:
+            raise IndexError
+
+        while index >= len(self._content_data):
+            try:
+                with self._loader('Loading content'):
+                    item = next(self._content_generator)
+                if self._loader.exception:
+                    raise IndexError
+            except StopIteration:
+                raise IndexError
+            else:
+                if isinstance(item, praw.objects.Message):
+                    # Message chains can be treated like comment trees
+                    for child_message in self.flatten_comments([item]):
+                        data = self.strip_praw_message(child_message)
+                        self._content_data.append(data)
+                else:
+                    # Comments also return children, but we don't display them
+                    # in the Inbox page so they don't need to be parsed here.
+                    data = self.strip_praw_message(item)
+                    self._content_data.append(data)
+
+        data = self._content_data[index]
+        indent_level = min(data['level'], self.max_indent_level)
+        data['h_offset'] = indent_level * self.indent_size
+        width = n_cols - data['h_offset']
+        data['split_body'] = self.wrap_text(data['body'], width=width)
+        data['n_rows'] = len(data['split_body']) + 2
+
+        return data
+
+
 class RequestHeaderRateLimiter(DefaultHandler):
     """Custom PRAW request handler for rate-limiting requests.
 
@@ -883,7 +1122,6 @@ class RequestHeaderRateLimiter(DefaultHandler):
         """Remove items from cache matching URLs.
 
         Return the number of items removed.
-
         """
         if isinstance(urls, six.text_type):
             urls = [urls]

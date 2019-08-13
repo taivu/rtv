@@ -19,8 +19,7 @@ try:
 except ImportError:
     if sys.platform == 'win32':
         sys.exit('Fatal Error: This program is not compatible with Windows '
-                 'Operating Systems.\nPlease try installing on either Linux '
-                 'or Mac OS')
+                 'Operating Systems.')
     else:
         sys.exit('Fatal Error: Your python distribution appears to be missing '
                  '_curses.so.\nWas it compiled without support for curses?')
@@ -43,7 +42,8 @@ from .terminal import Terminal
 from .content import RequestHeaderRateLimiter
 from .objects import curses_session, patch_webbrowser
 from .subreddit_page import SubredditPage
-from .exceptions import ConfigError, SubredditError
+from .submission_page import SubmissionPage
+from .exceptions import ConfigError, SubredditError, SubmissionError
 from .__version__ import __version__
 
 _logger = logging.getLogger(__name__)
@@ -112,23 +112,6 @@ def main():
             level=logging.DEBUG,
             filename=config['log'],
             format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
-        _logger.info('Starting new session, RTV v%s', __version__)
-        _logger.info('%s, %s', sys.executable, sys.version)
-        env = [
-            ('$DISPLAY', os.getenv('DISPLAY')),
-            ('$TERM', os.getenv('TERM')),
-            ('$LANG', os.getenv('LANG')),
-            ('$XDG_CONFIG_HOME', os.getenv('XDG_CONFIG_HOME')),
-            ('$XDG_DATA_HOME', os.getenv('$XDG_DATA_HOME')),
-            ('$RTV_EDITOR', os.getenv('RTV_EDITOR')),
-            ('$RTV_URLVIEWER', os.getenv('RTV_URLVIEWER')),
-            ('$RTV_BROWSER', RTV_BROWSER),
-            ('$BROWSER', BROWSER),
-            ('$RTV_PAGER', os.getenv('RTV_PAGER')),
-            ('$PAGER', os.getenv('PAGER')),
-            ('$VISUAL', os.getenv('VISUAL')),
-            ('$EDITOR', os.getenv('EDITOR'))]
-        _logger.info('Environment: %s', env)
     else:
         # Add an empty handler so the logger doesn't complain
         logging.root.addHandler(logging.NullHandler())
@@ -152,15 +135,10 @@ def main():
         warnings.warn(text)
         config['ascii'] = True
 
-    _logger.info('RTV module path: %s', os.path.abspath(__file__))
-
-    # Check the praw version
     if packages.__praw_bundled__:
-        _logger.info('Using packaged PRAW distribution, '
-                     'commit %s', packages.__praw_hash__)
+        praw_info = 'packaged, commit {}'.format(packages.__praw_hash__[:12])
     else:
-        _logger.info('Packaged PRAW not found, falling back to system '
-                     'installed version %s', praw.__version__)
+        praw_info = 'system installed v{}'.format(praw.__version__)
 
     # Update the webbrowser module's default behavior
     patch_webbrowser()
@@ -170,6 +148,38 @@ def main():
 
     # Construct the reddit user agent
     user_agent = docs.AGENT.format(version=__version__)
+
+    debug_info = [
+        'rtv version: rtv {}'.format(__version__),
+        'rtv module path: {}'.format(os.path.abspath(__file__)),
+        'python version: {}'.format(sys.version.replace('\n', ' ')),
+        'python executable: {}'.format(sys.executable),
+        'praw version: {}'.format(praw_info),
+        'locale, encoding: {}, {}'.format(default_locale, encoding),
+        'Environment Variables']
+    for name, value in [
+        ('BROWSER', BROWSER),
+        ('DISPLAY', os.getenv('DISPLAY')),
+        ('EDITOR', os.getenv('EDITOR')),
+        ('LANG', os.getenv('LANG')),
+        ('PAGER', os.getenv('PAGER')),
+        ('RTV_BROWSER', RTV_BROWSER),
+        ('RTV_EDITOR', os.getenv('RTV_EDITOR')),
+        ('RTV_PAGER', os.getenv('RTV_PAGER')),
+        ('RTV_URLVIEWER', os.getenv('RTV_URLVIEWER')),
+        ('TERM', os.getenv('TERM')),
+        ('VISUAL', os.getenv('VISUAL')),
+        ('XDG_CONFIG_HOME', os.getenv('XDG_CONFIG_HOME')),
+        ('XDG_DATA_HOME', os.getenv('XDG_DATA_HOME')),
+    ]:
+        debug_info.append('  {:<16}: {}'.format(name, value or ''))
+    debug_info.append('')
+    debug_text = '\n'.join(debug_info)
+
+    _logger.info(debug_text)
+    if config['debug_info']:
+        print(debug_text)
+        return
 
     try:
         with curses_session() as stdscr:
@@ -202,8 +212,29 @@ def main():
 
             # Authorize on launch if the refresh token is present
             oauth = OAuthHelper(reddit, term, config)
-            if config.refresh_token:
-                oauth.authorize()
+            if config['autologin'] and config.refresh_token:
+                oauth.authorize(autologin=True)
+
+            # Open the supplied submission link before opening the subreddit
+            if config['link']:
+                # Expand shortened urls like https://redd.it/
+                # Praw won't accept the shortened versions, add the reddit
+                # headers to avoid a 429 response from reddit.com
+                url = requests.head(
+                    config['link'],
+                    headers=reddit.http.headers,
+                    allow_redirects=True
+                ).url
+
+                page = None
+                with term.loader('Loading submission'):
+                    try:
+                        page = SubmissionPage(reddit, term, config, oauth, url)
+                    except Exception as e:
+                        _logger.exception(e)
+                        raise SubmissionError('Unable to load {0}'.format(url))
+                while page:
+                    page = page.loop()
 
             page = None
             name = config['subreddit']
@@ -212,33 +243,30 @@ def main():
                     page = SubredditPage(reddit, term, config, oauth, name)
                 except Exception as e:
                     # If we can't load the subreddit that was requested, try
-                    # to load the front page instead so at least the
-                    # application still launches.
+                    # to load the "popular" page instead so at least the
+                    # application still launches. This used to use the user's
+                    # front page, but some users have an empty front page.
                     _logger.exception(e)
-                    page = SubredditPage(reddit, term, config, oauth, 'front')
+                    page = SubredditPage(reddit, term, config, oauth, 'popular')
                     raise SubredditError('Unable to load {0}'.format(name))
-            if page is None:
-                return
-
-            # Open the supplied submission link before opening the subreddit
-            if config['link']:
-                # Expand shortened urls like https://redd.it/
-                # Praw won't accept the shortened versions, add the reddit
-                # headers to avoid a 429 response from reddit.com
-                url = requests.head(config['link'], headers=reddit.http.headers,
-                                    allow_redirects=True).url
-
-                page.open_submission(url=url)
 
             # Launch the subreddit page
-            page.loop()
+            while page:
+                page = page.loop()
 
     except ConfigError as e:
         _logger.exception(e)
         print(e)
     except Exception as e:
         _logger.exception(e)
-        raise
+        import traceback
+        exit_message = '\n'.join([
+            debug_text,
+            traceback.format_exc(),
+            'rtv has crashed. Please report this traceback at:',
+            'https://github.com/michael-lazar/rtv/issues\n'])
+        sys.stderr.write(exit_message)
+        return 1  # General error exception code
     except KeyboardInterrupt:
         pass
     finally:

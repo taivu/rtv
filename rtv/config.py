@@ -65,6 +65,9 @@ def build_parser():
         '--non-persistent', dest='persistent', action='store_const', const=False,
         help='Forget the authenticated user when the program exits')
     parser.add_argument(
+        '--no-autologin', dest='autologin', action='store_const', const=False,
+        help='Do not authenticate automatically on startup')
+    parser.add_argument(
         '--clear-auth', dest='clear_auth', action='store_const', const=True,
         help='Remove any saved user data before launching')
     parser.add_argument(
@@ -81,6 +84,9 @@ def build_parser():
     parser.add_argument(
         '--no-flash', dest='flash', action='store_const', const=False,
         help='Disable screen flashing')
+    parser.add_argument(
+        '--debug-info', dest='debug_info', action='store_const', const=True,
+        help='Show system and environment information and exit')
     return parser
 
 
@@ -255,18 +261,22 @@ class Config(object):
         if config.has_section('rtv'):
             rtv = dict(config.items('rtv'))
 
+        # convert non-string params to their typed representation
         params = {
             'ascii': partial(config.getboolean, 'rtv'),
             'monochrome': partial(config.getboolean, 'rtv'),
-            'clear_auth': partial(config.getboolean, 'rtv'),
             'persistent': partial(config.getboolean, 'rtv'),
+            'autologin': partial(config.getboolean, 'rtv'),
+            'clear_auth': partial(config.getboolean, 'rtv'),
             'enable_media': partial(config.getboolean, 'rtv'),
             'history_size': partial(config.getint, 'rtv'),
             'oauth_redirect_port': partial(config.getint, 'rtv'),
             'oauth_scope': lambda x: rtv[x].split(','),
             'max_comment_cols': partial(config.getint, 'rtv'),
+            'max_pager_cols': partial(config.getint, 'rtv'),
             'hide_username': partial(config.getboolean, 'rtv'),
-            'flash': partial(config.getboolean, 'rtv')
+            'flash': partial(config.getboolean, 'rtv'),
+            'force_new_browser_window': partial(config.getboolean, 'rtv')
         }
 
         for key, func in params.items():

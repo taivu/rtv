@@ -82,7 +82,7 @@ class Terminal(object):
         return 'o' if self.config['ascii'] else '•'
 
     @property
-    def guilded(self):
+    def gilded(self):
         return '*' if self.config['ascii'] else '✪'
 
     @property
@@ -354,6 +354,74 @@ class Terminal(object):
 
         return ch
 
+    def prompt_user_to_select_link(self, links):
+        """
+        Prompt the user to select a link from a list to open.
+
+        Return the link that was selected, or ``None`` if no link was selected.
+        """
+        link_pages = self.get_link_pages(links)
+        n = 0
+        while n in range(len(link_pages)):
+            link_page = link_pages[n]
+            text = 'Select a link to open (page {} of {}):\n\n'
+            text = text.format(n+1, len(link_pages))
+            text += self.get_link_page_text(link_page)
+            if link_page is not link_pages[-1]:
+                text += '[j] next page...'
+            if link_page is not link_pages[0]:
+                if link_page is not link_pages[-1]:
+                    text += '\n'
+                text += '[k] ...previous page'
+
+            try:
+                choice = chr(self.show_notification(text))
+                try:
+                    choice = int(choice)
+                except ValueError:
+                    pass
+            except ValueError:
+                return None
+            if choice == 'j':
+                if link_page is not link_pages[-1]:
+                    n += 1
+                continue
+            elif choice == 'k':
+                if link_page is not link_pages[0]:
+                    n -= 1
+                continue
+            elif choice not in range(len(link_page)):
+                return None
+            return link_page[choice]['href']
+
+    @staticmethod
+    def get_link_pages(links):
+        """
+        Given a list of links, separate them into pages that can be displayed
+        to the user and navigated using the 1-9 and 0 number keys.
+        """
+        link_pages = []
+        i = 0
+        while i < len(links):
+            link_page = []
+            while i < len(links) and len(link_page) < 10:
+                link_page.append(links[i])
+                i += 1
+            link_pages.append(link_page)
+        return link_pages
+
+    @staticmethod
+    def get_link_page_text(link_page):
+        """
+        Construct the dialog box to display a list of links to the user.
+        """
+        text = ''
+        for i, link in enumerate(link_page):
+            capped_link_text = (link['text'] if len(link['text']) <= 20
+                                else link['text'][:19] + '…')
+            text += '[{}] [{}]({})\n'.format(i, capped_link_text, link['href'])
+        return text
+
     def open_link(self, url):
         """
         Open a media link using the definitions from the user's mailcap file.
@@ -522,7 +590,7 @@ class Terminal(object):
                     # by RTV. It's also safer because it doesn't inject
                     # python code through the command line.
 
-                    # Surpress stdout/stderr from the browser, see
+                    # Suppress stdout/stderr from the browser, see
                     # https://stackoverflow.com/questions/2323080. We can't
                     # depend on replacing sys.stdout & sys.stderr because
                     # webbrowser uses Popen().
@@ -531,9 +599,15 @@ class Terminal(object):
                     try:
                         os.dup2(null, 1)
                         os.dup2(null, 2)
-                        webbrowser.open_new_tab(url)
+                        if self.config['force_new_browser_window']:
+                            webbrowser.open_new(url)
+                        else:
+                            webbrowser.open_new_tab(url)
                     finally:
-                        null.close()
+                        try:
+                            os.close(null)
+                        except OSError:
+                            pass
                         os.dup2(stdout, 1)
                         os.dup2(stderr, 2)
 
@@ -558,7 +632,10 @@ class Terminal(object):
                         pass
         else:
             with self.suspend():
-                webbrowser.open_new_tab(url)
+                if self.config['force_new_browser_window']:
+                    webbrowser.open_new(url)
+                else:
+                    webbrowser.open_new_tab(url)
 
     def open_pager(self, data, wrap=None):
         """
@@ -572,7 +649,7 @@ class Terminal(object):
 
         pager = os.getenv('RTV_PAGER')
         if pager is None:
-                pager = os.getenv('PAGER') or 'less'
+            pager = os.getenv('PAGER') or 'less'
         command = shlex.split(pager)
 
         if wrap:
@@ -843,7 +920,8 @@ class Terminal(object):
         # Pattern can span multiple lines, allows dot to match newline chars
         flags = re.MULTILINE | re.DOTALL
         pattern = '<!--{token}(.*?){token}-->'.format(token=TOKEN)
-        return re.sub(pattern, '', text, flags=flags).strip()
+        text = re.sub(pattern, '', text, flags=flags)
+        return re.sub(r'\A[\s\n]*\n', '', text, flags=flags).rstrip()
 
     def clear_screen(self):
         """

@@ -2,6 +2,10 @@
 RTV Changelog
 =============
 
+.. _1.27.0: http://github.com/michael-lazar/rtv/releases/tag/v1.27.0
+.. _1.26.0: http://github.com/michael-lazar/rtv/releases/tag/v1.26.0
+.. _1.25.1: http://github.com/michael-lazar/rtv/releases/tag/v1.25.1
+.. _1.25.0: http://github.com/michael-lazar/rtv/releases/tag/v1.25.0
 .. _1.24.0: http://github.com/michael-lazar/rtv/releases/tag/v1.24.0
 .. _1.23.0: http://github.com/michael-lazar/rtv/releases/tag/v1.23.0
 .. _1.22.1: http://github.com/michael-lazar/rtv/releases/tag/v1.22.1
@@ -36,6 +40,123 @@ RTV Changelog
 .. _1.2.2: http://github.com/michael-lazar/rtv/releases/tag/v1.2.2
 .. _1.2.1: http://github.com/michael-lazar/rtv/releases/tag/v1.2.1
 .. _1.2: http://github.com/michael-lazar/rtv/releases/tag/v1.2
+
+--------------------
+1.27.0_ (2019-06-02)
+--------------------
+
+This is the final release of RTV. See here for more information:
+
+https://github.com/michael-lazar/rtv/issues/696
+
+Features
+
+* Added a configuration option to toggle whether to open web browser links in a
+  new tab or a new window.
+
+Documentation
+
+* Improved the mailcap example for the ``feh`` command.
+* Fixed the the descriptions for the ``j`` & ``k`` keys (they were swapped).
+
+--------------------
+1.26.0_ (2019-03-03)
+--------------------
+
+Features
+
+* Added a brand new inbox page for viewing private messages and comment replies.
+  The inbox is accessible with the ``i`` key. Supported actions include viewing
+  message chains and replying to messages, marking messages as read/unread, and
+  opening the context of a comment.
+* Added the ability to compose new private messages with the ``C`` key.
+* Updated the inline help ``?`` document to contain a more comprehensive list
+  of commands.
+* Opening a link from the command line is now faster at startup because the
+  default subreddit will not be loaded beforehand.
+* Added a new ``--debug-info`` command to display useful system information.
+
+Bugfixes
+
+* Fixed opening comments with the prompt ``/`` from the subscription window.
+* The subscription and multireddit ``s``/``S`` keys now work from all pages.
+* Relative time strings are now correctly pluralized.
+* Fixed an unclosed file handler when opening the web browser.
+* Fixed the application not starting if the user has an empty front page.
+
+Configuration Changes
+
+* Renamed the following keybindings to better represent their usage:
+
+  * ``SORT_HOT`` -> ``SORT_1``
+  * ``SORT_TOP`` -> ``SORT_2``
+  * ``SORT_RISING`` -> ``SORT_3``
+  * ``SORT_NEW`` -> ``SORT_4``
+  * ``SORT_CONTROVERSIAL`` -> ``SORT_5``
+  * ``SORT_GILDED`` -> ``SORT_6``
+  * ``SUBREDDIT_OPEN_SUBSCRIPTIONS`` -> ``SUBSCRIPTIONS``
+  * ``SUBREDDIT_OPEN_MULTIREDDITS`` -> ``MULTIREDDITS``
+
+
+* Added new keybindings to support the inbox page:
+
+  * ``SORT_7``
+  * ``PRIVATE_MESSAGE``
+  * ``INBOX_VIEW_CONTEXT``
+  * ``INBOX_OPEN_SUBMISSION``
+  * ``INBOX_REPLY``
+  * ``INBOX_MARK_READ``
+  * ``INBOX_EXIT``
+
+* Added new theme elements to support the inbox page:
+
+  * <New>
+  * <Distinguished>
+  * <MessageSubject>
+  * <MessageLink>
+  * <MessageAuthor>
+  * <MessageSubreddit>
+  * <MessageText>
+
+--------------------
+1.25.1_ (2019-02-13)
+--------------------
+
+Bugfixes
+
+* Fixed a bug that was causing newlines to be stripped when posting comments
+  and submissions.
+
+
+--------------------
+1.25.0_ (2019-02-03)
+--------------------
+
+Features
+
+* You can now open HTML links that are embedded inside of comments and
+  submissions by pressing the ``ENTER`` key and selecting a link from the list.
+  This also works when copying links to the clipboard using ``Y``.
+* Added the ``--no-autologin`` command line argument to disable automatically
+  logging in at startup.
+* Added the ``max_pager_cols`` configuration option to limit the text width
+  when sending text to the system ``PAGER``.
+* Additional filtering options have been added when viewing user pages.
+* The gilded flair now displays the number of times a submission has been
+  gilded.
+* Submissions/comments now display the time that they were most recently edited.
+
+Bugfixes
+
+* Fixed the MIME parser for gfycat, and gfycat videos are now downloaded as mp4.
+* Fixed formatting when composing posts with leading whitespace.
+* Fixed crash when attempting to display a long terminal title.
+
+Documentation
+
+* RTV has been moved to the Arch Community Repository and installation
+  instructions for Arch have been updated accordingly.
+
 
 --------------------
 1.24.0_ (2018-08-12)

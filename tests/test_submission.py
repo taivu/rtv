@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-import sys
 import curses
-import subprocess
 from collections import OrderedDict
 
 import pytest
@@ -40,14 +38,14 @@ def test_submission_page_construct(reddit, terminal, config, oauth):
 
     # Set some special flags to make sure that we can draw them
     submission_data = page.content.get(-1)
-    submission_data['gold'] = True
+    submission_data['gold'] = 1
     submission_data['stickied'] = True
     submission_data['saved'] = True
     submission_data['flair'] = 'flair'
 
     # Set some special flags to make sure that we can draw them
     comment_data = page.content.get(0)
-    comment_data['gold'] = True
+    comment_data['gold'] = 3
     comment_data['stickied'] = True
     comment_data['saved'] = True
     comment_data['flair'] = 'flair'
@@ -140,19 +138,23 @@ def test_submission_prompt(submission_page, terminal):
     with mock.patch.object(terminal, 'prompt_input'):
         # Valid input
         submission_page.active = True
-        submission_page.selected_subreddit = None
+        submission_page.selected_page = None
         terminal.prompt_input.return_value = 'front/top'
         submission_page.controller.trigger('/')
+
+        submission_page.handle_selected_page()
         assert not submission_page.active
-        assert submission_page.selected_subreddit
+        assert submission_page.selected_page
 
         # Invalid input
         submission_page.active = True
-        submission_page.selected_subreddit = None
+        submission_page.selected_page = None
         terminal.prompt_input.return_value = 'front/pot'
         submission_page.controller.trigger('/')
+
+        submission_page.handle_selected_page()
         assert submission_page.active
-        assert not submission_page.selected_subreddit
+        assert not submission_page.selected_page
 
 
 @pytest.mark.parametrize('prompt', PROMPTS.values(), ids=list(PROMPTS))
@@ -164,9 +166,14 @@ def test_submission_prompt_submission(submission_page, terminal, prompt):
         submission_page.content.order = 'top'
         submission_page.controller.trigger('/')
         assert not terminal.loader.exception
-        data = submission_page.content.get(-1)
+
+        submission_page.handle_selected_page()
+        assert not submission_page.active
+        assert submission_page.selected_page
+
+        assert submission_page.selected_page.content.order is None
+        data = submission_page.selected_page.content.get(-1)
         assert data['object'].id == '571dw3'
-        assert submission_page.content.order is None
 
 
 def test_submission_order(submission_page):
@@ -497,88 +504,41 @@ def test_submission_urlview(submission_page, terminal, refresh_token):
         open_urlview.assert_called_with('http://test.url.com  ❤')
 
 
-@pytest.mark.skipif(sys.platform != 'darwin', reason='Test uses osx clipboard')
-def test_copy_to_clipboard_osx(submission_page, terminal, refresh_token):
+def test_submission_prompt_and_select_link(submission_page, terminal):
 
-    def get_clipboard_content():
-        p = subprocess.Popen(['pbpaste', 'r'],
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             close_fds=True)
-        stdout, stderr = p.communicate()
-        return stdout.decode('utf-8')
+    # A link submission should return the URL that it's pointing to
+    link = submission_page.prompt_and_select_link()
+    assert link == 'https://github.com/michael-lazar/rtv'
 
-    window = terminal.stdscr.subwin
+    with mock.patch.object(submission_page, 'clear_input_queue'):
+        submission_page.controller.trigger('j')
 
-    # Log in
-    submission_page.config.refresh_token = refresh_token
-    submission_page.oauth.authorize()
+    # The first comment doesn't have any links in the comment body
+    link = submission_page.prompt_and_select_link()
+    data = submission_page.get_selected_item()
+    assert link == data['permalink']
 
-    # Get submission
-    data = submission_page.content.get(submission_page.nav.absolute_index)
+    with mock.patch.object(submission_page, 'clear_input_queue'):
+        submission_page.controller.trigger('j')
 
-    # Trigger copy command for permalink
-    submission_page.controller.trigger('y')
-    assert data.get('permalink') == get_clipboard_content()
-    window.addstr.assert_called_with(1, 1, b'Copied permalink to clipboard')
+    # The second comment has a link embedded in the comment body, and
+    # the user is prompted to select which link to open
+    with mock.patch.object(terminal, 'prompt_user_to_select_link') as prompt:
+        prompt.return_value = 'https://selected_link'
 
-    # Trigger copy command for submission
-    submission_page.controller.trigger('Y')
-    assert data.get('url_full') == get_clipboard_content()
-    window.addstr.assert_called_with(1, 1, b'Copied url to clipboard')
+        link = submission_page.prompt_and_select_link()
+        data = submission_page.get_selected_item()
 
+        assert link == prompt.return_value
 
-@pytest.mark.skipif(sys.platform == 'darwin', reason='Test uses linux clipboard')
-def test_copy_to_clipboard_linux(submission_page, terminal, refresh_token):
+        embedded_url = 'http://peterdowns.com/posts/first-time-with-pypi.html'
+        assert prompt.call_args[0][0] == [
+            {'text': 'Permalink', 'href': data['permalink']},
+            {'text': 'Relevant tutorial', 'href': embedded_url}
+        ]
 
-    def get_clipboard_content():
-        paste_cmd = None
-        for cmd in ['xsel', 'xclip']:
-            cmd_exists = subprocess.call(
-                ['which', cmd],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
-            if cmd_exists:
-                paste_cmd = cmd
-                break
+    submission_page.controller.trigger(' ')
 
-        if paste_cmd is not None:
-            cmd_args = {'xsel': ['xsel', '-b', '-o'],
-                        'xclip': ['xclip', '-selection', 'c', '-o']}
-            p = subprocess.Popen(cmd_args.get(paste_cmd),
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE,
-                                 close_fds=True)
-            stdout, stderr = p.communicate()
-            return stdout.decode('utf-8')
-
-    window = terminal.stdscr.subwin
-
-    # Log in
-    submission_page.config.refresh_token = refresh_token
-    submission_page.oauth.authorize()
-
-    # Get submission
-    data = submission_page.content.get(submission_page.nav.absolute_index)
-
-    # Trigger copy command for permalink
-    submission_page.controller.trigger('y')
-    content = get_clipboard_content()
-    if content is not None:
-        assert data.get('permalink') == content
-        window.addstr.assert_called_with(1, 1, b'Copied permalink to clipboard')
-    else:
-        # Neither xclip or xsel installed, this is what happens on Travis CI
-        text = b'Failed to copy permalink: External copy application not found'
-        window.addstr.assert_called_with(1, 1, text)
-
-    # Trigger copy command for url
-    submission_page.controller.trigger('Y')
-    content = get_clipboard_content()
-    if content is not None:
-        assert data.get('url_full') == content
-        window.addstr.assert_called_with(1, 1, b'Copied url to clipboard')
-    else:
-        # Neither xclip or xsel installed, this is what happens on Travis CI
-        text = b'Failed to copy url: External copy application not found'
-        window.addstr.assert_called_with(1, 1, text)
+    # The comment is now hidden so there are no links to select
+    link = submission_page.prompt_and_select_link()
+    assert link is None

@@ -1,10 +1,11 @@
-<h1 align="center">
-<img alt="Reddit Terminal Viewer" src="resources/logo.png"/>
-</h1>
+<h1 align="center">Reddit Terminal Viewer (RTV)</h1>
 
 <p align="center">
-RTV provides a text-based interface to view and interact with reddit.<br>
-It's compatible with most terminal emulators on Linux and macOS.
+A text-based interface (TUI) to view and interact with Reddit from your terminal.<br>
+</p>
+
+<p align="center">
+  <strong>This project is no longer being maintained, see <a href="https://github.com/michael-lazar/rtv/issues/696">here</a>.</strong><br>
 </p>
 
 <p align="center">
@@ -12,33 +13,24 @@ It's compatible with most terminal emulators on Linux and macOS.
 </p>
 
 <p align="center">
-RTV is built in python using the curses library.
-</p>
-
----
-
-<p align="center">
   <a href="https://pypi.python.org/pypi/rtv/">
     <img alt="pypi" src="https://img.shields.io/pypi/v/rtv.svg?label=version"/>
-  </a>
-  <a href="https://pypi.python.org/pypi/rtv/">
-    <img alt="python" src="https://img.shields.io/badge/python-2.7%2C%203.4+-blue.svg"/>
   </a>
   <a href="https://travis-ci.org/michael-lazar/rtv">
     <img alt="travis-ci" src="https://travis-ci.org/michael-lazar/rtv.svg?branch=master"/>
   </a>
+  <a href="https://repology.org/project/rtv/versions">
+    <img src="https://repology.org/badge/tiny-repos/rtv.svg" alt="Packaging status">
+  </a>
   <a href="https://coveralls.io/github/michael-lazar/rtv?branch=master">
     <img alt="coveralls" src="https://coveralls.io/repos/michael-lazar/rtv/badge.svg?branch=master&service=github"/>
-  </a>
-  <a href="https://gitter.im/michael-lazar/rtv">
-    <img alt="gitter" src="https://img.shields.io/gitter/room/michael-lazar/rtv.js.svg"/>
   </a>
   <a href="https://saythanks.io/to/michael-lazar">
     <img alt="say-thanks" src="https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg"/>
   </a>
 </p>
 
----
+## Table of Contents
 
 * [Demo](#demo)  
 * [Installation](#installation)  
@@ -55,6 +47,13 @@ RTV is built in python using the curses library.
 <img alt="title image" src="resources/demo.gif"/>
 </p>
 
+You can use *telnet* or *ssh* to try out a lite version of RTV directly in your terminal, without needing to install it:
+
+- ``$ telnet redditbox.us``
+- ``$ ssh redditbox.us``
+
+*[redditbox.us](https://redditbox.us/) is an independent project by Alex Jarmoszuk*
+
 ## Installation
 
 ### PyPI package
@@ -67,21 +66,36 @@ $ pip install rtv
 
 ### Native packages
 
-See [Repology](https://repology.org/metapackage/rtv/packages) for an up-to-date list of supported packages:
+See [Repology](https://repology.org/metapackage/rtv/packages) for an up-to-date list of supported distro packages:
 
 ```bash
 # macOS
 $ brew install rtv
 
 # Arch
-$ pacaur -S rtv
+$ pacman -S rtv
 
 # Nix
 $ nix-env -i rtv
 
+# Debian
+$ apt install rtv
+
 # FreeBSD
 $ pkg install rtv
 ```
+
+### From source
+
+```bash
+$ git clone https://github.com/michael-lazar/rtv.git
+$ cd rtv
+$ python setup.py install
+```
+
+### Windows
+
+RTV is not supported on Windows, due to a lack of resources and interest. Sorry!
 
 ## Usage
 
@@ -98,7 +112,7 @@ Move the cursor using either the arrow keys or *Vim* style movement:
 - Press <kbd>▲</kbd> and <kbd>▼</kbd> to scroll through submissions
 - Press <kbd>▶</kbd> to view the selected submission and <kbd>◀</kbd> to return
 - Press <kbd>space-bar</kbd> to expand/collapse comments
-- Press <kbd>u</kbd> to login
+- Press <kbd>u</kbd> to login (this requires a web browser for [OAuth](https://github.com/reddit-archive/reddit/wiki/oauth2))
 - Press <kbd>?</kbd> to open the help screen
 
 Press <kbd>/</kbd> to open the navigation prompt, where you can type things like:
@@ -110,7 +124,7 @@ Press <kbd>/</kbd> to open the navigation prompt, where you can type things like
 - ``/u/multi-mod/m/art``
 - ``/domain/github.com``
 
-See [CONTROLS](CONTROLS.rst) for the full list of commands.
+See [CONTROLS](CONTROLS.md) for the full list of commands.
 
 ## Settings
 
@@ -196,7 +210,7 @@ Themes can be used to customize the look and feel of RTV
   </tr>
 </table>
 
-List installed themes with the ``--list-themes`` command, and select one with ``--theme``. You can also set the theme permenantly in your [rtv.cfg](rtv/templates/rtv.cfg) file. You can use the <kbd>F2</kbd> & <kbd>F3</kbd> keys inside of RTV to preview themes.
+You can list all installed themes with the ``--list-themes`` command, and select one with ``--theme``. You can save your choice permanently in your [rtv.cfg](rtv/templates/rtv.cfg) file. You can also use the <kbd>F2</kbd> & <kbd>F3</kbd> keys inside of RTV to cycle through all available themes.
 
 For instructions on writing and installing your own themes, see [THEMES.md](THEMES.md).
 
